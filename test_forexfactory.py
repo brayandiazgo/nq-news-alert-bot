@@ -1,13 +1,7 @@
 from playwright.sync_api import sync_playwright
-from datetime import datetime
 
 
 BASE_URL = "https://www.forexfactory.com/calendar"
-
-SEMANAS = [
-    ("4–10 OCTUBRE 2026", "oct4.2026"),
-    ("11–17 OCTUBRE 2026", "oct11.2026"),
-]
 
 
 def clasificar_evento(evento):
@@ -41,165 +35,287 @@ def clasificar_evento(evento):
 
 with sync_playwright() as p:
 
-    browser = p.chromium.launch(headless=True)
+    browser = p.chromium.launch(
+        headless=True,
+        args=[
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+        ]
+    )
 
     page = browser.new_page(
+        viewport={"width": 1920, "height": 1080},
         user_agent=(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/155.0.0.0 Safari/537.36"
+            "Chrome/91.0.4472.124 Safari/537.36"
         )
     )
 
+    # ----------------------------------------------------------
+    # CARGAMOS OCTUBRE COMPLETO
+    # ----------------------------------------------------------
+
+    url = f"{BASE_URL}?month=october"
+
+    print(f"Abriendo: {url}")
+
+    page.goto(
+        url,
+        wait_until="domcontentloaded",
+        timeout=60000
+    )
+
+    page.wait_for_timeout(5000)
+
+    # ----------------------------------------------------------
+    # TABLA REAL DE FOREX FACTORY
+    # ----------------------------------------------------------
+
+    try:
+        page.wait_for_selector(
+            "table.calendar__table",
+            timeout=30000
+        )
+    except:
+        print("❌ No se encontró .calendar__table")
+
+        print("\nTítulo:")
+        print(page.title())
+
+        print("\nURL:")
+        print(page.url)
+
+        browser.close()
+        raise SystemExit(1)
+
+    print("✅ Tabla Forex Factory encontrada")
+
+    # ----------------------------------------------------------
+    # SCROLL PARA ASEGURAR QUE SE CARGUE TODO
+    # ----------------------------------------------------------
+
+    ultima_altura = 0
+
+    for _ in range(30):
+
+        altura = page.evaluate(
+            "document.body.scrollHeight"
+        )
+
+        if altura == ultima_altura:
+            break
+
+        ultima_altura = altura
+
+        page.evaluate(
+            "window.scrollTo(0, document.body.scrollHeight)"
+        )
+
+        page.wait_for_timeout(1000)
+
+    # ----------------------------------------------------------
+    # OBTENER TODAS LAS FILAS
+    # ----------------------------------------------------------
+
+    filas = page.locator(
+        "table.calendar__table tr"
+    )
+
+    print(f"Filas encontradas: {filas.count()}")
+
+    eventos = []
+
+    fecha_actual = None
+
+    for i in range(filas.count()):
+
+        fila = filas.nth(i)
+
+        # ------------------------------------------------------
+        # FECHA
+        # ------------------------------------------------------
+
+        fecha_el = fila.locator(
+            "td.calendar__cell.calendar__date"
+        )
+
+        if fecha_el.count() > 0:
+
+            texto_fecha = fecha_el.first.inner_text().strip()
+
+            if texto_fecha:
+                fecha_actual = texto_fecha
+
+        # ------------------------------------------------------
+        # MONEDA
+        # ------------------------------------------------------
+
+        moneda_el = fila.locator(
+            "td.calendar__cell.calendar__currency"
+        )
+
+        if moneda_el.count() == 0:
+            continue
+
+        moneda = moneda_el.first.inner_text().strip()
+
+        if moneda != "USD":
+            continue
+
+        # ------------------------------------------------------
+        # EVENTO
+        # ------------------------------------------------------
+
+        evento_el = fila.locator(
+            "td.calendar__cell.calendar__event.event"
+        )
+
+        if evento_el.count() == 0:
+            continue
+
+        evento = evento_el.first.inner_text().strip()
+
+        if not evento:
+            continue
+
+        # ------------------------------------------------------
+        # CLASIFICAR
+        # ------------------------------------------------------
+
+        resultado = clasificar_evento(evento)
+
+        if not resultado:
+            continue
+
+        icono, tipo, regla = resultado
+
+        # ------------------------------------------------------
+        # HORA
+        # ------------------------------------------------------
+
+        hora_el = fila.locator(
+            "td.calendar__cell.calendar__time"
+        )
+
+        if hora_el.count() > 0:
+            hora = hora_el.first.inner_text().strip()
+        else:
+            hora = "Hora no disponible"
+
+        # ------------------------------------------------------
+        # IMPACTO
+        # ------------------------------------------------------
+
+        impacto = "desconocido"
+
+        impacto_el = fila.locator(
+            "td.calendar__cell.calendar__impact"
+        )
+
+        if impacto_el.count() > 0:
+
+            iconos = impacto_el.locator("span")
+
+            for j in range(iconos.count()):
+
+                clase = (
+                    iconos.nth(j)
+                    .get_attribute("class")
+                    or ""
+                )
+
+                if "impact-red" in clase:
+                    impacto = "ALTO"
+
+                elif "impact-ora" in clase:
+                    impacto = "MEDIO"
+
+                elif "impact-yel" in clase:
+                    impacto = "BAJO"
+
+        # ------------------------------------------------------
+        # GUARDAR
+        # ------------------------------------------------------
+
+        eventos.append({
+            "fecha": fecha_actual or "Desconocida",
+            "hora": hora,
+            "evento": evento,
+            "tipo": tipo,
+            "icono": icono,
+            "regla": regla,
+            "impacto": impacto,
+        })
+
+    # ----------------------------------------------------------
+    # MOSTRAR SOLO NUESTRAS DOS SEMANAS
+    # ----------------------------------------------------------
+
     total = 0
 
-    for nombre_semana, week in SEMANAS:
+    semanas = {
+        "4–10 OCTUBRE 2026": [
+            "Oct 5",
+            "Oct 6",
+            "Oct 7",
+            "Oct 8",
+            "Oct 9",
+        ],
+        "11–17 OCTUBRE 2026": [
+            "Oct 12",
+            "Oct 13",
+            "Oct 14",
+            "Oct 15",
+            "Oct 16",
+        ],
+    }
+
+    for nombre_semana, fechas in semanas.items():
 
         print()
         print("=" * 70)
         print(f"📅 {nombre_semana}")
         print("=" * 70)
 
-        url = f"{BASE_URL}?week={week}"
+        encontrados = 0
 
-        page.goto(
-            url,
-            wait_until="domcontentloaded",
-            timeout=60000
-        )
+        for evento in eventos:
 
-        # Esperar específicamente la tabla del calendario
-        try:
-            tbody = page.wait_for_selector(
-                "#content section.content.calendar table tbody",
-                timeout=30000
-            )
-        except:
-            print("❌ No se encontró la tabla del calendario")
-            continue
+            fecha = evento["fecha"]
 
-        # Esperar renderizado
-        page.wait_for_timeout(3000)
-
-        filas = tbody.query_selector_all("tr.calendar__row")
-
-        fecha_actual = ""
-
-        encontrados_semana = 0
-
-        for fila in filas:
-
-            # --------------------------------------------------
-            # FECHA
-            # --------------------------------------------------
-
-            date_el = fila.query_selector(
-                "td.calendar__date span"
-            )
-
-            if date_el:
-                nueva_fecha = date_el.inner_text().strip()
-
-                if nueva_fecha:
-                    fecha_actual = nueva_fecha
-
-            # --------------------------------------------------
-            # MONEDA
-            # --------------------------------------------------
-
-            currency_el = fila.query_selector(
-                "td.calendar__currency span"
-            )
-
-            if not currency_el:
+            if fecha not in fechas:
                 continue
-
-            moneda = currency_el.inner_text().strip()
-
-            if moneda != "USD":
-                continue
-
-            # --------------------------------------------------
-            # EVENTO
-            # --------------------------------------------------
-
-            event_el = fila.query_selector(
-                "span.calendar__event-title"
-            )
-
-            if not event_el:
-                continue
-
-            evento = event_el.inner_text().strip()
-
-            if not evento:
-                continue
-
-            # --------------------------------------------------
-            # CLASIFICACIÓN
-            # --------------------------------------------------
-
-            resultado = clasificar_evento(evento)
-
-            if not resultado:
-                continue
-
-            icono, tipo, regla = resultado
-
-            # --------------------------------------------------
-            # HORA
-            # --------------------------------------------------
-
-            time_el = fila.query_selector(
-                "td.calendar__time span"
-            )
-
-            if time_el:
-                hora = time_el.inner_text().strip()
-            else:
-                hora = "Hora no disponible"
-
-            # --------------------------------------------------
-            # IMPACTO
-            # --------------------------------------------------
-
-            impact = "desconocido"
-
-            impact_el = fila.query_selector(
-                "td.calendar__impact span"
-            )
-
-            if impact_el:
-                clases = impact_el.get_attribute("class") or ""
-
-                if "ff-impact-red" in clases:
-                    impact = "ALTO"
-                elif "ff-impact-ora" in clases:
-                    impact = "MEDIO"
-                elif "ff-impact-yel" in clases:
-                    impact = "BAJO"
-
-            # --------------------------------------------------
-            # RESULTADO
-            # --------------------------------------------------
 
             print()
             print("-" * 70)
-            print(f"{icono} {tipo}")
-            print(f"Evento: {evento}")
-            print(f"Fecha: {fecha_actual}")
-            print(f"Hora: {hora}")
-            print(f"Moneda: {moneda}")
-            print(f"Impacto: {impact}")
-            print(f"Regla NQ: {regla}")
+            print(
+                f'{evento["icono"]} {evento["tipo"]}'
+            )
+            print(
+                f'Evento: {evento["evento"]}'
+            )
+            print(
+                f'Fecha: {evento["fecha"]}'
+            )
+            print(
+                f'Hora: {evento["hora"]}'
+            )
+            print(
+                f'Impacto: {evento["impacto"]}'
+            )
+            print(
+                f'Regla NQ: {evento["regla"]}'
+            )
             print("-" * 70)
 
-            encontrados_semana += 1
+            encontrados += 1
             total += 1
 
         print()
         print(
-            f"Eventos relevantes encontrados: {encontrados_semana}"
+            f"Eventos relevantes encontrados: {encontrados}"
         )
 
     print()
