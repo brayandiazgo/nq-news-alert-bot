@@ -89,4 +89,32 @@ assert "Hoy NO se opera" in sent_msgs[-1]
 assert run(t_fomc + timedelta(minutes=3)) == 0
 assert run(t_fomc + timedelta(hours=3)) == 0              # muy tarde: no manda nada viejo
 print("avisos y anti-duplicados OK")
+# --- feed JSON (fuente principal) ---
+FEED = [
+    {"title": "Final Services PMI", "country": "USD", "date": "2026-10-05T09:45:00-04:00", "impact": "Low"},
+    {"title": "ISM Services PMI", "country": "USD", "date": "2026-10-05T10:00:00-04:00", "impact": "Medium"},
+    {"title": "Final Services PMI", "country": "EUR", "date": "2026-10-05T04:00:00-04:00", "impact": "Low"},
+    {"title": "PPI m/m", "country": "EUR", "date": "2026-10-05T05:00:00-04:00", "impact": "Low"},
+    {"title": "FOMC Member Bowman Speaks", "country": "USD", "date": "2026-10-06T10:45:00-04:00", "impact": "Low"},
+    {"title": "FOMC Meeting Minutes", "country": "USD", "date": "2026-10-07T14:00:00-04:00", "impact": "High"},
+    {"title": "CPI m/m", "country": "USD", "date": "2026-10-14T08:30:00-04:00", "impact": "High"},
+    {"title": "Core CPI m/m", "country": "USD", "date": "2026-10-14T08:30:00-04:00", "impact": "High"},
+    {"title": "Bank Holiday", "country": "USD", "date": "2026-10-12T00:00:00-04:00", "impact": "Holiday"},
+    {"title": "Bank Holiday", "country": "CNY", "date": "2026-10-05T19:01:00-04:00", "impact": "Holiday"},
+    {"title": "Basura sin fecha", "country": "USD", "date": "no-es-fecha", "impact": "High"},
+]
+fe = b.parse_feed(FEED)
+assert len(fe) == 10                                       # la fila rota se descarta
+frel = b.relevant(fe)
+fk = [(g["kind"], g["dt"] or g["date"]) for g in frel]
+assert fk == [
+    ("PMI", "2026-10-05T09:45:00-04:00"), ("PMI", "2026-10-05T10:00:00-04:00"),
+    ("FOMC_MINUTES", "2026-10-07T14:00:00-04:00"), ("HOLIDAY", "2026-10-12"),
+    ("CPI", "2026-10-14T08:30:00-04:00")], fk            # EUR y los "FOMC Member…" quedan fuera
+fomc_f = [g for g in frel if g["kind"] == "FOMC_MINUTES"][0]
+assert "1:00 pm Bogotá (2:00 pm ET)" in b.event_block(fomc_f)
+cpi_f = [g for g in frel if g["kind"] == "CPI"][0]
+assert cpi_f["titles"] == ["CPI m/m", "Core CPI m/m"] and cpi_f["date"] == "2026-10-14"
+print("feed OK")
+
 print("TODO OK")

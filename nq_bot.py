@@ -2,8 +2,8 @@
 """Bot NQ: avisos de noticias de Forex Factory por Telegram.
 
 Uso:
-  python nq_bot.py scrape                 lee Forex Factory (Playwright), guarda state/events.json
-                                          y manda el resumen del día
+  python nq_bot.py scrape                 lee el calendario (feed JSON de Forex Factory; si falla,
+                                          Playwright), guarda state/events.json y manda el resumen
   python nq_bot.py check                  lee state/events.json y manda avisos previos / "ya salió"
                                           (sin navegador, es rápido)
   python nq_bot.py parse-file f.html YYYY-MM   prueba el parser con un HTML guardado
@@ -20,7 +20,10 @@ import html as htmllib
 import json
 import os
 import re
+import subprocess
 import sys
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta
@@ -310,11 +313,72 @@ def cmd_check() -> None:
     print(f"check {now:%Y-%m-%d %H:%M} Bogotá: {n} mensaje(s) enviados")
 
 
-# ───────────────────────── Modo scrape ─────────────────────────
+# ───────────────────────── Fuente 1: feed JSON (sin Cloudflare) ─────────────────────────
+FEEDS = [  # (url, obligatorio)
+    ("https://nfs.faireconomy.media/ff_calendar_thisweek.json", True),
+    ("https://nfs.faireconomy.media/ff_calendar_nextweek.json", False),
+]
+IMPACT_MAP = {"high": "red", "medium": "ora", "low": "yel", "holiday": "gra"}
+
+
+def http_json(url: str, tries: int = 3):
+    last: Exception | None = None
+    for i in range(tries):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            last = exc
+            if exc.code not in (429, 500, 502, 503, 504):
+                break
+        except Exception as exc:  # red, JSON roto, etc.
+            last = exc
+        if i < tries - 1:
+            time.sleep(20 * (i + 1))
+    raise RuntimeError(f"{url.rsplit('/', 1)[-1]}: {last}")
+
+
+def parse_feed(items: list[dict]) -> list[dict]:
+    """Convierte el feed JSON al mismo formato de evento que usa el parser HTML."""
+    out = []
+    for it in items:
+        try:
+            dt = datetime.fromisoformat(it["date"])
+        except (KeyError, ValueError):
+            continue
+        if dt.tzinfo is None:  # el feed viene en hora de Nueva York
+            dt = dt.replace(tzinfo=ET)
+        impact = IMPACT_MAP.get(str(it.get("impact", "")).lower(), "")
+        if impact == "gra":  # festivo: solo cuenta la fecha, no la hora
+            out.append({"date": dt.date(), "dt": None, "currency": it.get("country", ""),
+                        "impact": impact, "title": clean(it.get("title", ""))})
+        else:
+            out.append({"date": dt.astimezone(LOCAL_TZ).date(), "dt": dt,
+                        "currency": it.get("country", ""), "impact": impact,
+                        "title": clean(it.get("title", ""))})
+    return out
+
+
+def fetch_from_feed() -> list[dict]:
+    events: list[dict] = []
+    for url, required in FEEDS:
+        try:
+            events += parse_feed(http_json(url))
+        except Exception as exc:
+            if required:
+                raise
+            print(f"(opcional) {exc}")
+    return events
+
+
+# ───────────────────────── Fuente 2 (respaldo): navegador ─────────────────────────
 def fetch_pages(targets: list[tuple[str, int, int]]) -> list[tuple[str, int, int]]:
     from playwright.sync_api import TimeoutError as PWTimeout
     from playwright.sync_api import sync_playwright
 
+    subprocess.run([sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
+                   check=True)
     pages = []
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -326,16 +390,12 @@ def fetch_pages(targets: list[tuple[str, int, int]]) -> list[tuple[str, int, int
         page = ctx.new_page()
         for label, year, month in targets:
             url = f"https://www.forexfactory.com/calendar?month={label}"
-            for attempt in range(1, 4):
-                page.goto(url, wait_until="domcontentloaded", timeout=60000)
-                try:
-                    page.wait_for_selector("tr.calendar__row", timeout=25000)
-                    break
-                except PWTimeout:
-                    print(f"{label}: intento {attempt} sin tabla (título: {page.title()!r})")
-                    page.wait_for_timeout(6000)
-            else:
-                raise RuntimeError(f"Forex Factory no mostró el calendario ({label}); posible Cloudflare")
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            try:  # sin recargar: recargar reinicia el desafío de Cloudflare
+                page.wait_for_selector("tr.calendar__row", timeout=60000)
+            except PWTimeout:
+                raise RuntimeError(
+                    f"Forex Factory no mostró el calendario ({label}); título: {page.title()!r}")
             for _ in range(4):  # por si carga filas al hacer scroll
                 page.mouse.wheel(0, 6000)
                 page.wait_for_timeout(500)
@@ -353,26 +413,35 @@ def cmd_scrape() -> None:
         targets.append(("next", later.year, later.month))
 
     sent = load_json(SENT_FILE, {})
+    events: list[dict] = []
+    source = "feed"
+    errors: list[str] = []
     try:
-        events: list[dict] = []
-        for page_html, y, m in fetch_pages(targets):
-            events += parse_calendar(page_html, y, m)
-        if not events:
-            raise RuntimeError("0 filas leídas del calendario")
-    except Exception as exc:  # avisar en vez de quedarse ciego en silencio
+        events = fetch_from_feed()
+    except Exception as exc:
+        errors.append(f"feed: {exc}")
+        print(f"El feed falló ({exc}); intento con el navegador…")
+    if not events:
+        source = "navegador"
+        try:
+            for page_html, y, m in fetch_pages(targets):
+                events += parse_calendar(page_html, y, m)
+        except Exception as exc:
+            errors.append(f"navegador: {exc}")
+    if not events:  # avisar en vez de quedarse ciego en silencio
         key = f"error|{today}"
         if key not in sent:
-            telegram("⚠️ <b>Bot NQ</b>: hoy no pude leer Forex Factory "
-                     f"({htmllib.escape(str(exc))[:180]}). Revisa las noticias a mano.")
+            telegram("⚠️ <b>Bot NQ</b>: hoy no pude leer el calendario "
+                     f"({htmllib.escape(' | '.join(errors))[:300]}). Revisa las noticias a mano.")
             mark_sent(sent, key, now)
             save_json(SENT_FILE, sent)
-        raise SystemExit(f"scrape falló: {exc}")
+        raise SystemExit("scrape falló: " + " | ".join(errors))
 
     rel = relevant(events)
     usd = [e for e in events if e["currency"] == "USD"]
-    save_json(EVENTS_FILE, {"generated_at": now.isoformat(), "ff_tz": FF_TZ.key,
+    save_json(EVENTS_FILE, {"generated_at": now.isoformat(), "source": source,
                             "rows_total": len(events), "rows_usd": len(usd), "events": rel})
-    print(f"Filas: {len(events)} | USD: {len(usd)} | relevantes para NQ: {len(rel)}")
+    print(f"Fuente: {source} | filas: {len(events)} | USD: {len(usd)} | relevantes para NQ: {len(rel)}")
     for g in rel:
         print(" ", g["dt"] or g["date"], g["kind"], g["titles"])
 
