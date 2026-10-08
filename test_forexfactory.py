@@ -1,47 +1,40 @@
 from playwright.sync_api import sync_playwright
-from datetime import datetime
+from urllib.parse import urljoin
 
-URL = "https://www.forexfactory.com/calendar"
+BASE_URL = "https://www.forexfactory.com/calendar"
+
+SEMANAS = [
+    ("4–10 OCTUBRE 2026", "oct4.2026"),
+    ("11–17 OCTUBRE 2026", "oct11.2026"),
+]
 
 
-# ============================================================
-# EVENTOS QUE BLOQUEAN NQ
-# ============================================================
-
-def es_evento_bloqueo(nombre):
-    nombre = nombre.lower()
+def clasificar_evento(nombre, texto):
+    n = nombre.lower()
+    t = texto.lower()
 
     # CPI / IPC
-    if "cpi" in nombre or "consumer price index" in nombre:
-        return "CPI / IPC"
+    if "cpi" in n or "consumer price index" in n:
+        return "🔴", "NO SE OPERA ESTA SESIÓN", "CPI / IPC"
 
     # PPI / IPP
-    if "ppi" in nombre or "producer price index" in nombre:
-        return "PPI / IPP"
+    if "ppi" in n or "producer price index" in n:
+        return "🔴", "NO SE OPERA ESTA SESIÓN", "PPI / IPP"
 
-    # FOMC Minutes / Actas
-    if "fomc meeting minutes" in nombre:
-        return "FOMC MINUTES"
+    # FOMC Minutes
+    if "fomc meeting minutes" in n or "fomc minutes" in n:
+        return "🔴", "NO SE OPERA ESTA SESIÓN", "FOMC MINUTES"
+
+    # PMI
+    if "pmi" in n:
+        return "🟡", "ESPERAR PMI → OPERAR DESPUÉS", "PMI"
+
+    # Festivos / cierres
+    if "bank holiday" in n or "holiday" in n:
+        return "🏦", "REVISAR CIERRE DE NQ", "FESTIVO"
 
     return None
 
-
-# ============================================================
-# PMI
-# ============================================================
-
-def es_pmi(nombre):
-    nombre = nombre.lower()
-
-    if "pmi" in nombre:
-        return True
-
-    return False
-
-
-# ============================================================
-# CALENDARIO
-# ============================================================
 
 with sync_playwright() as p:
 
@@ -55,77 +48,98 @@ with sync_playwright() as p:
         )
     )
 
-    print("Abriendo Forex Factory...")
+    total = 0
 
-    response = page.goto(
-        URL,
-        wait_until="domcontentloaded",
-        timeout=60000
-    )
+    for nombre_semana, semana in SEMANAS:
 
-    print("HTTP:", response.status if response else "Sin respuesta")
-    print("Título:", page.title())
+        url = f"{BASE_URL}?week={semana}"
 
-    page.wait_for_timeout(5000)
+        print("\n")
+        print("=" * 70)
+        print(f"📅 {nombre_semana}")
+        print("=" * 70)
 
-    print("\nBuscando eventos relevantes para NQ...\n")
+        page.goto(
+            url,
+            wait_until="domcontentloaded",
+            timeout=60000
+        )
 
-    # Buscar todas las filas del calendario
-    filas = page.locator("tr.calendar__row")
+        page.wait_for_timeout(4000)
 
-    encontrados = 0
+        filas = page.locator("tr.calendar__row")
 
-    for i in range(filas.count()):
+        encontrados_semana = 0
 
-        fila = filas.nth(i)
+        for i in range(filas.count()):
 
-        texto = fila.inner_text().strip()
+            fila = filas.nth(i)
 
-        if not texto:
-            continue
+            try:
+                texto = fila.inner_text().strip()
+            except:
+                continue
 
-        # Solo nos interesan eventos USD
-        if "USD" not in texto:
-            continue
+            if not texto:
+                continue
 
-        nombre = ""
+            # Solo USD
+            if "USD" not in texto:
+                continue
 
-        # Intentar obtener nombre del evento
-        try:
-            nombre = fila.locator(
-                ".calendar__event-title"
-            ).inner_text().strip()
-        except:
-            pass
+            try:
+                evento = fila.locator(
+                    ".calendar__event-title"
+                ).inner_text().strip()
+            except:
+                continue
 
-        if not nombre:
-            continue
+            if not evento:
+                continue
 
-        bloqueo = es_evento_bloqueo(nombre)
+            resultado = clasificar_evento(evento, texto)
 
-        if bloqueo:
+            if not resultado:
+                continue
 
-            print("=" * 60)
-            print("🔴 NQ — NO SE OPERA ESTA SESIÓN")
-            print("Evento:", nombre)
-            print("Motivo:", bloqueo)
-            print("=" * 60)
+            icono, regla, tipo = resultado
 
-            encontrados += 1
+            # Hora
+            try:
+                hora = fila.locator(
+                    ".calendar__time"
+                ).inner_text().strip()
+            except:
+                hora = "Hora no disponible"
 
-        elif es_pmi(nombre):
+            # Intentamos obtener fecha de la fila
+            try:
+                fecha = fila.locator(
+                    ".calendar__date"
+                ).inner_text().strip()
+            except:
+                fecha = ""
 
-            print("=" * 60)
-            print("🟡 NQ — ESPERAR PMI")
-            print("Evento:", nombre)
-            print("Regla: NO operar antes del PMI")
-            print("Regla: OPERAR DESPUÉS DEL PMI")
-            print("=" * 60)
+            print()
+            print("-" * 70)
+            print(f"{icono} {tipo}")
+            print(f"Evento: {evento}")
+            print(f"Fecha: {fecha if fecha else 'Ver calendario'}")
+            print(f"Hora: {hora}")
+            print(f"Regla NQ: {regla}")
+            print("-" * 70)
 
-            encontrados += 1
+            encontrados_semana += 1
+            total += 1
 
-    print("\n" + "=" * 60)
-    print("TOTAL EVENTOS RELEVANTES:", encontrados)
-    print("=" * 60)
+        print()
+        print(
+            f"Eventos relevantes encontrados: {encontrados_semana}"
+        )
+
+    print("\n")
+    print("=" * 70)
+    print(f"TOTAL GENERAL: {total}")
+    print("=" * 70)
 
     browser.close()
