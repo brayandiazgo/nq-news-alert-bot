@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-10-08T17:54:27.163799-05:00",
+  "source": "feed",
+  "rows_total": 83,
+  "rows_usd": 23,
+  "events": [
+    {
+      "id": "2026-10-05T09:45:00-04:00|PMI",
+      "kind": "PMI",
+      "action": "WAIT",
+      "date": "2026-10-05",
+      "dt": "2026-10-05T09:45:00-04:00",
+      "titles": [
+        "Final Services PMI"
+      ]
+    },
+    {
+      "id": "2026-10-05T10:00:00-04:00|PMI",
+      "kind": "PMI",
+      "action": "WAIT",
+      "date": "2026-10-05",
+      "dt": "2026-10-05T10:00:00-04:00",
+      "titles": [
+        "ISM Services PMI"
+      ]
+    },
+    {
+      "id": "2026-10-07T14:00:00-04:00|FOMC_MINUTES",
+      "kind": "FOMC_MINUTES",
+      "action": "NO_TRADE",
+      "date": "2026-10-07",
+      "dt": "2026-10-07T14:00:00-04:00",
+      "titles": [
+        "FOMC Meeting Minutes"
+      ]
+    }
+  ]
+}
