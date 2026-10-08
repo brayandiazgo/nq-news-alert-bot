@@ -117,4 +117,25 @@ cpi_f = [g for g in frel if g["kind"] == "CPI"][0]
 assert cpi_f["titles"] == ["CPI m/m", "Core CPI m/m"] and cpi_f["date"] == "2026-10-14"
 print("feed OK")
 
+# --- resumen semanal ---
+from datetime import date  # noqa: E402
+
+thu = date(2026, 10, 8)
+assert b.week_monday(thu) == date(2026, 10, 5)
+assert b.week_monday(date(2026, 10, 11)) == date(2026, 10, 12)   # domingo -> semana que empieza mañana
+w = b.build_weekly(frel, thu, date(2026, 10, 16))
+this_part, next_part = w.split("<b>Próxima semana</b>")
+assert "Esta semana" in this_part and "5 oct – 9 oct" in this_part
+assert "lun 5 oct · 8:45 am · <b>Final Services PMI</b>" in this_part
+assert "mié 7 oct · 1:00 pm · <b>FOMC Meeting Minutes</b> → NO SE OPERA" in this_part
+assert "12 oct – 16 oct" in next_part
+assert "lun 12 oct · <b>Bank Holiday</b> → festivo USD, falta confirmar CME" in next_part
+assert "mié 14 oct · 7:30 am · <b>CPI m/m, Core CPI m/m</b> → NO SE OPERA" in next_part
+w2 = b.build_weekly(frel, thu, date(2026, 10, 9))                 # el feed solo llega hasta el viernes
+assert "Sin datos todavía" in w2.split("<b>Próxima semana</b>")[1]
+w3 = b.build_weekly([], thu, date(2026, 10, 16))
+assert w3.count("Sin noticias que afecten NQ") == 2
+print("semanal OK")
+print(w)
+
 print("TODO OK")

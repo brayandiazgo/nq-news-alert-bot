@@ -4,6 +4,7 @@
 Uso:
   python nq_bot.py scrape                 lee el calendario (feed JSON de Forex Factory; si falla,
                                           Playwright), guarda state/events.json y manda el resumen
+  python nq_bot.py scrape --weekly        igual, pero manda el resumen de esta semana y la próxima
   python nq_bot.py check                  lee state/events.json y manda avisos previos / "ya salió"
                                           (sin navegador, es rápido)
   python nq_bot.py parse-file f.html YYYY-MM   prueba el parser con un HTML guardado
@@ -228,6 +229,42 @@ def build_digest(rel: list[dict], today: date) -> str:
     return "\n".join(lines)
 
 
+def week_monday(today: date) -> date:
+    """Lunes de la semana que importa: el domingo ya cuenta la semana que empieza mañana."""
+    return today + timedelta(days=1) if today.weekday() == 6 else today - timedelta(days=today.weekday())
+
+
+def short_line(g: dict) -> str:
+    d = date.fromisoformat(g["date"])
+    titles = htmllib.escape(", ".join(g["titles"]))
+    when = ""
+    if g["dt"]:
+        b = datetime.fromisoformat(g["dt"]).astimezone(LOCAL_TZ)
+        when = " · " + b.strftime("%I:%M %p").lstrip("0").lower()
+    if g["action"] == "HOLIDAY":
+        closed = g["date"] in load_closures().get("closed", [])
+        act = "NO SE OPERA (CME cerrado)" if closed else "festivo USD, falta confirmar CME"
+    else:
+        act = {"NO_TRADE": "NO SE OPERA", "WAIT": "ESPERAR → OPERAR DESPUÉS"}[g["action"]]
+    return f"{ICON[g['kind']]} {DIAS[d.weekday()][:3]} {d.day} {MESES[d.month - 1]}{when} · <b>{titles}</b> → {act}"
+
+
+def build_weekly(rel: list[dict], today: date, data_until: date | None) -> str:
+    """Resumen de esta semana y la próxima (lunes a viernes, hora de Bogotá)."""
+    mon = week_monday(today)
+
+    def section(start: date, label: str) -> list[str]:
+        end = start + timedelta(days=4)
+        head = f"<b>{label}</b> ({start.day} {MESES[start.month - 1]} – {end.day} {MESES[end.month - 1]})"
+        if data_until is not None and data_until < start:
+            return [head, "Sin datos todavía: Forex Factory aún no publica esa semana."]
+        evs = [g for g in rel if start.isoformat() <= g["date"] <= end.isoformat()]
+        return [head] + ([short_line(g) for g in evs] if evs else ["✅ Sin noticias que afecten NQ."])
+
+    return "\n".join(["🗓 <b>NQ — resumen semanal</b>", ""]
+                     + section(mon, "Esta semana") + [""] + section(mon + timedelta(days=7), "Próxima semana"))
+
+
 # ───────────────────────── Estado y Telegram ─────────────────────────
 def load_json(path: Path, default):
     try:
@@ -404,7 +441,7 @@ def fetch_pages(targets: list[tuple[str, int, int]]) -> list[tuple[str, int, int
     return pages
 
 
-def cmd_scrape() -> None:
+def cmd_scrape(weekly: bool = False) -> None:
     now = datetime.now(LOCAL_TZ)
     today = now.date()
     targets = [("this", today.year, today.month)]
@@ -439,16 +476,21 @@ def cmd_scrape() -> None:
 
     rel = relevant(events)
     usd = [e for e in events if e["currency"] == "USD"]
+    data_until = max(e["date"] for e in events)
     save_json(EVENTS_FILE, {"generated_at": now.isoformat(), "source": source,
+                            "data_until": data_until.isoformat(),
                             "rows_total": len(events), "rows_usd": len(usd), "events": rel})
     print(f"Fuente: {source} | filas: {len(events)} | USD: {len(usd)} | relevantes para NQ: {len(rel)}")
     for g in rel:
         print(" ", g["dt"] or g["date"], g["kind"], g["titles"])
 
-    key = f"digest|{today}"
-    if key not in sent:
-        telegram(build_digest(rel, today))
-        mark_sent(sent, key, now)
+    if weekly:  # se pide a mano o el domingo: siempre se envía
+        telegram(build_weekly(rel, today, data_until))
+    else:
+        key = f"digest|{today}"
+        if key not in sent:
+            telegram(build_digest(rel, today))
+            mark_sent(sent, key, now)
     save_json(SENT_FILE, sent)
 
 
@@ -464,7 +506,7 @@ def cmd_parse_file(path: str, ym: str) -> None:
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     if cmd == "scrape":
-        cmd_scrape()
+        cmd_scrape(weekly="--weekly" in sys.argv[2:])
     elif cmd == "check":
         cmd_check()
     elif cmd == "parse-file" and len(sys.argv) == 4:

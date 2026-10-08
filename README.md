@@ -11,6 +11,7 @@ Avisa solo de lo que cambia tu operación en **NQ**:
 ## Cómo funciona
 
 - `scrape.yml` corre una vez al día (5:30 am Bogotá, lun-vie): lee el feed JSON semanal de Forex Factory (`nfs.faireconomy.media`, no pasa por Cloudflare), guarda `state/events.json` y manda el resumen del día. Si el feed falla, usa Playwright como respaldo (Cloudflare suele bloquearlo desde GitHub).
+- **Resumen semanal** (esta semana y la próxima): llega solo los domingos a las 6:00 pm Bogotá, o cuando quieras desde Actions → "NQ - leer calendario" → Run workflow → marcar *weekly*. La próxima semana aparece solo cuando Forex Factory ya la publicó; si no, dice "Sin datos todavía".
 - `check.yml` corre cada 15 min (5:00 am a 6:45 pm Bogotá): lee `state/events.json` (sin navegador) y manda el aviso previo (`LEAD_MIN`, por defecto 30 min) y el "ya salió". `state/sent.json` evita duplicados.
 - Si Forex Factory bloquea la lectura, el bot te avisa por Telegram en vez de quedarse callado.
 
