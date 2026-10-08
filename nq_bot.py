@@ -257,7 +257,8 @@ def build_weekly(rel: list[dict], today: date, data_until: date | None) -> str:
         end = start + timedelta(days=4)
         head = f"<b>{label}</b> ({start.day} {MESES[start.month - 1]} – {end.day} {MESES[end.month - 1]})"
         if data_until is not None and data_until < start:
-            return [head, "Sin datos todavía: Forex Factory aún no publica esa semana."]
+            return [head, "Sin datos todavía: el feed del bot aún no trae esa semana "
+                          "(en la página de Forex Factory sí puede verse). Se completa el domingo."]
         evs = [g for g in rel if start.isoformat() <= g["date"] <= end.isoformat()]
         return [head] + ([short_line(g) for g in evs] if evs else ["✅ Sin noticias que afecten NQ."])
 
@@ -287,8 +288,19 @@ def telegram(text: str) -> None:
         "chat_id": chat, "text": text, "parse_mode": "HTML",
         "disable_web_page_preview": "true"}).encode()
     req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=body)
-    with urllib.request.urlopen(req, timeout=20) as r:
-        r.read()
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            r.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:300]
+        hint = {
+            400: "revisa TELEGRAM_CHAT_ID",
+            401: "token inválido: revisa TELEGRAM_TOKEN",
+            403: "el bot no puede escribirte: ábrelo en Telegram y toca Start "
+                 "(si es un grupo, añade el bot al grupo)",
+            404: "token mal copiado: revisa TELEGRAM_TOKEN",
+        }.get(exc.code, "")
+        raise SystemExit(f"Telegram rechazó el mensaje (HTTP {exc.code}): {detail} → {hint}")
 
 
 def mark_sent(sent: dict, key: str, now: datetime) -> None:
@@ -488,9 +500,11 @@ def cmd_scrape(weekly: bool = False) -> None:
         telegram(build_weekly(rel, today, data_until))
     else:
         key = f"digest|{today}"
-        if key not in sent:
+        if key not in sent or os.getenv("FORCE_SEND"):
             telegram(build_digest(rel, today))
             mark_sent(sent, key, now)
+        else:
+            print("Resumen de hoy ya enviado antes: no lo repito (así se evitan duplicados).")
     save_json(SENT_FILE, sent)
 
 
