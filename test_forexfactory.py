@@ -1,17 +1,15 @@
 from playwright.sync_api import sync_playwright
-from urllib.parse import urljoin
 
 BASE_URL = "https://www.forexfactory.com/calendar"
 
 SEMANAS = [
-    ("4–10 OCTUBRE 2026", "oct4.2026"),
-    ("11–17 OCTUBRE 2026", "oct11.2026"),
+    ("4–10 OCTUBRE 2026", "oct4.2026", "oct10.2026"),
+    ("11–17 OCTUBRE 2026", "oct11.2026", "oct17.2026"),
 ]
 
 
-def clasificar_evento(nombre, texto):
+def clasificar_evento(nombre):
     n = nombre.lower()
-    t = texto.lower()
 
     # CPI / IPC
     if "cpi" in n or "consumer price index" in n:
@@ -29,7 +27,7 @@ def clasificar_evento(nombre, texto):
     if "pmi" in n:
         return "🟡", "ESPERAR PMI → OPERAR DESPUÉS", "PMI"
 
-    # Festivos / cierres
+    # Festivos USD
     if "bank holiday" in n or "holiday" in n:
         return "🏦", "REVISAR CIERRE DE NQ", "FESTIVO"
 
@@ -50,9 +48,9 @@ with sync_playwright() as p:
 
     total = 0
 
-    for nombre_semana, semana in SEMANAS:
+    for nombre_semana, desde, hasta in SEMANAS:
 
-        url = f"{BASE_URL}?week={semana}"
+        url = f"{BASE_URL}?range={desde}-{hasta}"
 
         print("\n")
         print("=" * 70)
@@ -65,11 +63,12 @@ with sync_playwright() as p:
             timeout=60000
         )
 
-        page.wait_for_timeout(4000)
+        page.wait_for_timeout(5000)
 
         filas = page.locator("tr.calendar__row")
 
         encontrados_semana = 0
+        fecha_actual = ""
 
         for i in range(filas.count()):
 
@@ -83,48 +82,101 @@ with sync_playwright() as p:
             if not texto:
                 continue
 
-            # Solo USD
+            # --------------------------------------------------
+            # DETECTAR FECHA
+            # --------------------------------------------------
+
+            try:
+                fecha_elemento = fila.locator(".calendar__date")
+
+                if fecha_elemento.count() > 0:
+                    nueva_fecha = fecha_elemento.first.inner_text().strip()
+
+                    if nueva_fecha:
+                        fecha_actual = nueva_fecha
+
+            except:
+                pass
+
+            # --------------------------------------------------
+            # SOLO USD
+            # --------------------------------------------------
+
             if "USD" not in texto:
                 continue
 
+            # --------------------------------------------------
+            # OBTENER NOMBRE DEL EVENTO
+            # --------------------------------------------------
+
+            evento = ""
+
             try:
-                evento = fila.locator(
-                    ".calendar__event-title"
-                ).inner_text().strip()
+                titulo = fila.locator(".calendar__event-title")
+
+                if titulo.count() > 0:
+                    evento = titulo.first.inner_text().strip()
             except:
-                continue
+                pass
+
+            # Si por alguna razón el selector no funciona,
+            # buscamos directamente en el texto de la fila.
+            if not evento:
+
+                posibles = [
+                    "FOMC Meeting Minutes",
+                    "Final Services PMI",
+                    "ISM Services PMI",
+                    "CPI",
+                    "Consumer Price Index",
+                    "PPI",
+                    "Producer Price Index",
+                    "Bank Holiday",
+                ]
+
+                for posible in posibles:
+                    if posible.lower() in texto.lower():
+                        evento = posible
+                        break
 
             if not evento:
                 continue
 
-            resultado = clasificar_evento(evento, texto)
+            # --------------------------------------------------
+            # CLASIFICAR
+            # --------------------------------------------------
+
+            resultado = clasificar_evento(evento)
 
             if not resultado:
                 continue
 
             icono, regla, tipo = resultado
 
-            # Hora
+            # --------------------------------------------------
+            # HORA
+            # --------------------------------------------------
+
             try:
-                hora = fila.locator(
-                    ".calendar__time"
-                ).inner_text().strip()
+                hora_elemento = fila.locator(".calendar__time")
+
+                if hora_elemento.count() > 0:
+                    hora = hora_elemento.first.inner_text().strip()
+                else:
+                    hora = "Hora no disponible"
+
             except:
                 hora = "Hora no disponible"
 
-            # Intentamos obtener fecha de la fila
-            try:
-                fecha = fila.locator(
-                    ".calendar__date"
-                ).inner_text().strip()
-            except:
-                fecha = ""
+            # --------------------------------------------------
+            # MOSTRAR
+            # --------------------------------------------------
 
             print()
             print("-" * 70)
             print(f"{icono} {tipo}")
             print(f"Evento: {evento}")
-            print(f"Fecha: {fecha if fecha else 'Ver calendario'}")
+            print(f"Fecha: {fecha_actual if fecha_actual else 'Ver calendario'}")
             print(f"Hora: {hora}")
             print(f"Regla NQ: {regla}")
             print("-" * 70)
@@ -133,9 +185,7 @@ with sync_playwright() as p:
             total += 1
 
         print()
-        print(
-            f"Eventos relevantes encontrados: {encontrados_semana}"
-        )
+        print(f"Eventos relevantes encontrados: {encontrados_semana}")
 
     print("\n")
     print("=" * 70)
