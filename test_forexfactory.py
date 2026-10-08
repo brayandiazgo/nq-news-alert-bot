@@ -1,35 +1,40 @@
 from playwright.sync_api import sync_playwright
+from datetime import datetime
+
 
 BASE_URL = "https://www.forexfactory.com/calendar"
 
 SEMANAS = [
-    ("4–10 OCTUBRE 2026", "oct4.2026", "oct10.2026"),
-    ("11–17 OCTUBRE 2026", "oct11.2026", "oct17.2026"),
+    ("4–10 OCTUBRE 2026", "oct4.2026"),
+    ("11–17 OCTUBRE 2026", "oct11.2026"),
 ]
 
 
-def clasificar_evento(nombre):
-    n = nombre.lower()
+def clasificar_evento(evento):
+    n = evento.lower()
 
     # CPI / IPC
     if "cpi" in n or "consumer price index" in n:
-        return "🔴", "NO SE OPERA ESTA SESIÓN", "CPI / IPC"
+        return "🔴", "CPI / IPC", "NO SE OPERA ESTA SESIÓN"
 
     # PPI / IPP
     if "ppi" in n or "producer price index" in n:
-        return "🔴", "NO SE OPERA ESTA SESIÓN", "PPI / IPP"
+        return "🔴", "PPI / IPP", "NO SE OPERA ESTA SESIÓN"
 
     # FOMC Minutes
-    if "fomc meeting minutes" in n or "fomc minutes" in n:
-        return "🔴", "NO SE OPERA ESTA SESIÓN", "FOMC MINUTES"
+    if "fomc meeting minutes" in n:
+        return "🔴", "FOMC MINUTES", "NO SE OPERA ESTA SESIÓN"
+
+    if "fomc minutes" in n:
+        return "🔴", "FOMC MINUTES", "NO SE OPERA ESTA SESIÓN"
 
     # PMI
     if "pmi" in n:
-        return "🟡", "ESPERAR PMI → OPERAR DESPUÉS", "PMI"
+        return "🟡", "PMI", "ESPERAR PMI → OPERAR DESPUÉS"
 
-    # Festivos USD
+    # Festivos
     if "bank holiday" in n or "holiday" in n:
-        return "🏦", "REVISAR CIERRE DE NQ", "FESTIVO"
+        return "🏦", "FESTIVO", "REVISAR CIERRE DE NQ"
 
     return None
 
@@ -48,14 +53,14 @@ with sync_playwright() as p:
 
     total = 0
 
-    for nombre_semana, desde, hasta in SEMANAS:
+    for nombre_semana, week in SEMANAS:
 
-        url = f"{BASE_URL}?range={desde}-{hasta}"
-
-        print("\n")
+        print()
         print("=" * 70)
         print(f"📅 {nombre_semana}")
         print("=" * 70)
+
+        url = f"{BASE_URL}?week={week}"
 
         page.goto(
             url,
@@ -63,87 +68,75 @@ with sync_playwright() as p:
             timeout=60000
         )
 
-        page.wait_for_timeout(5000)
+        # Esperar específicamente la tabla del calendario
+        try:
+            tbody = page.wait_for_selector(
+                "#content section.content.calendar table tbody",
+                timeout=30000
+            )
+        except:
+            print("❌ No se encontró la tabla del calendario")
+            continue
 
-        filas = page.locator("tr.calendar__row")
+        # Esperar renderizado
+        page.wait_for_timeout(3000)
 
-        encontrados_semana = 0
+        filas = tbody.query_selector_all("tr.calendar__row")
+
         fecha_actual = ""
 
-        for i in range(filas.count()):
+        encontrados_semana = 0
 
-            fila = filas.nth(i)
+        for fila in filas:
 
-            try:
-                texto = fila.inner_text().strip()
-            except:
+            # --------------------------------------------------
+            # FECHA
+            # --------------------------------------------------
+
+            date_el = fila.query_selector(
+                "td.calendar__date span"
+            )
+
+            if date_el:
+                nueva_fecha = date_el.inner_text().strip()
+
+                if nueva_fecha:
+                    fecha_actual = nueva_fecha
+
+            # --------------------------------------------------
+            # MONEDA
+            # --------------------------------------------------
+
+            currency_el = fila.query_selector(
+                "td.calendar__currency span"
+            )
+
+            if not currency_el:
                 continue
 
-            if not texto:
+            moneda = currency_el.inner_text().strip()
+
+            if moneda != "USD":
                 continue
 
             # --------------------------------------------------
-            # DETECTAR FECHA
+            # EVENTO
             # --------------------------------------------------
 
-            try:
-                fecha_elemento = fila.locator(".calendar__date")
+            event_el = fila.query_selector(
+                "span.calendar__event-title"
+            )
 
-                if fecha_elemento.count() > 0:
-                    nueva_fecha = fecha_elemento.first.inner_text().strip()
-
-                    if nueva_fecha:
-                        fecha_actual = nueva_fecha
-
-            except:
-                pass
-
-            # --------------------------------------------------
-            # SOLO USD
-            # --------------------------------------------------
-
-            if "USD" not in texto:
+            if not event_el:
                 continue
 
-            # --------------------------------------------------
-            # OBTENER NOMBRE DEL EVENTO
-            # --------------------------------------------------
-
-            evento = ""
-
-            try:
-                titulo = fila.locator(".calendar__event-title")
-
-                if titulo.count() > 0:
-                    evento = titulo.first.inner_text().strip()
-            except:
-                pass
-
-            # Si por alguna razón el selector no funciona,
-            # buscamos directamente en el texto de la fila.
-            if not evento:
-
-                posibles = [
-                    "FOMC Meeting Minutes",
-                    "Final Services PMI",
-                    "ISM Services PMI",
-                    "CPI",
-                    "Consumer Price Index",
-                    "PPI",
-                    "Producer Price Index",
-                    "Bank Holiday",
-                ]
-
-                for posible in posibles:
-                    if posible.lower() in texto.lower():
-                        evento = posible
-                        break
+            evento = event_el.inner_text().strip()
 
             if not evento:
                 continue
 
             # --------------------------------------------------
-            # CLASIFICAR
+            # CLASIFICACIÓN
             # --------------------------------------------------
 
             resultado = clasificar_evento(evento)
@@ -151,33 +144,53 @@ with sync_playwright() as p:
             if not resultado:
                 continue
 
-            icono, regla, tipo = resultado
+            icono, tipo, regla = resultado
 
             # --------------------------------------------------
             # HORA
             # --------------------------------------------------
 
-            try:
-                hora_elemento = fila.locator(".calendar__time")
+            time_el = fila.query_selector(
+                "td.calendar__time span"
+            )
 
-                if hora_elemento.count() > 0:
-                    hora = hora_elemento.first.inner_text().strip()
-                else:
-                    hora = "Hora no disponible"
-
-            except:
+            if time_el:
+                hora = time_el.inner_text().strip()
+            else:
                 hora = "Hora no disponible"
 
             # --------------------------------------------------
-            # MOSTRAR
+            # IMPACTO
+            # --------------------------------------------------
+
+            impact = "desconocido"
+
+            impact_el = fila.query_selector(
+                "td.calendar__impact span"
+            )
+
+            if impact_el:
+                clases = impact_el.get_attribute("class") or ""
+
+                if "ff-impact-red" in clases:
+                    impact = "ALTO"
+                elif "ff-impact-ora" in clases:
+                    impact = "MEDIO"
+                elif "ff-impact-yel" in clases:
+                    impact = "BAJO"
+
+            # --------------------------------------------------
+            # RESULTADO
             # --------------------------------------------------
 
             print()
             print("-" * 70)
             print(f"{icono} {tipo}")
             print(f"Evento: {evento}")
-            print(f"Fecha: {fecha_actual if fecha_actual else 'Ver calendario'}")
+            print(f"Fecha: {fecha_actual}")
             print(f"Hora: {hora}")
+            print(f"Moneda: {moneda}")
+            print(f"Impacto: {impact}")
             print(f"Regla NQ: {regla}")
             print("-" * 70)
 
@@ -185,9 +198,11 @@ with sync_playwright() as p:
             total += 1
 
         print()
-        print(f"Eventos relevantes encontrados: {encontrados_semana}")
+        print(
+            f"Eventos relevantes encontrados: {encontrados_semana}"
+        )
 
-    print("\n")
+    print()
     print("=" * 70)
     print(f"TOTAL GENERAL: {total}")
     print("=" * 70)
