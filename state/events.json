@@ -1,38 +1,42 @@
 {
-  "generated_at": "2026-10-10T10:55:39.982192-05:00",
+  "generated_at": "2026-10-11T18:10:45.626483-05:00",
   "source": "feed",
-  "data_until": "2026-10-09",
-  "rows_total": 83,
-  "rows_usd": 23,
+  "data_until": "2026-10-17",
+  "rows_total": 109,
+  "rows_usd": 34,
   "events": [
     {
-      "id": "2026-10-05T09:45:00-04:00|PMI",
-      "kind": "PMI",
-      "action": "WAIT",
-      "date": "2026-10-05",
-      "dt": "2026-10-05T09:45:00-04:00",
+      "id": "2026-10-12|HOLIDAY",
+      "kind": "HOLIDAY",
+      "action": "HOLIDAY",
+      "date": "2026-10-12",
+      "dt": null,
       "titles": [
-        "Final Services PMI"
+        "Bank Holiday"
       ]
     },
     {
-      "id": "2026-10-05T10:00:00-04:00|PMI",
-      "kind": "PMI",
-      "action": "WAIT",
-      "date": "2026-10-05",
-      "dt": "2026-10-05T10:00:00-04:00",
-      "titles": [
-        "ISM Services PMI"
-      ]
-    },
-    {
-      "id": "2026-10-07T14:00:00-04:00|FOMC_MINUTES",
-      "kind": "FOMC_MINUTES",
+      "id": "2026-10-14T08:30:00-04:00|CPI",
+      "kind": "CPI",
       "action": "NO_TRADE",
-      "date": "2026-10-07",
-      "dt": "2026-10-07T14:00:00-04:00",
+      "date": "2026-10-14",
+      "dt": "2026-10-14T08:30:00-04:00",
       "titles": [
-        "FOMC Meeting Minutes"
+        "Core CPI m/m",
+        "Core CPI y/y",
+        "CPI m/m",
+        "CPI y/y"
+      ]
+    },
+    {
+      "id": "2026-10-15T08:30:00-04:00|PPI",
+      "kind": "PPI",
+      "action": "NO_TRADE",
+      "date": "2026-10-15",
+      "dt": "2026-10-15T08:30:00-04:00",
+      "titles": [
+        "Core PPI m/m",
+        "PPI m/m"
       ]
     }
   ]
