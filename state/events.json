@@ -1,42 +1,19 @@
 {
-  "generated_at": "2026-10-16T05:56:03.829565-05:00",
+  "generated_at": "2026-10-18T18:15:09.458668-05:00",
   "source": "feed",
-  "data_until": "2026-10-17",
-  "rows_total": 111,
-  "rows_usd": 35,
+  "data_until": "2026-10-24",
+  "rows_total": 86,
+  "rows_usd": 14,
   "events": [
     {
-      "id": "2026-10-12|HOLIDAY",
-      "kind": "HOLIDAY",
-      "action": "HOLIDAY",
-      "date": "2026-10-12",
-      "dt": null,
+      "id": "2026-10-23T09:45:00-04:00|PMI",
+      "kind": "PMI",
+      "action": "WAIT",
+      "date": "2026-10-23",
+      "dt": "2026-10-23T09:45:00-04:00",
       "titles": [
-        "Bank Holiday"
-      ]
-    },
-    {
-      "id": "2026-10-14T08:30:00-04:00|CPI",
-      "kind": "CPI",
-      "action": "NO_TRADE",
-      "date": "2026-10-14",
-      "dt": "2026-10-14T08:30:00-04:00",
-      "titles": [
-        "Core CPI m/m",
-        "Core CPI y/y",
-        "CPI m/m",
-        "CPI y/y"
-      ]
-    },
-    {
-      "id": "2026-10-15T08:30:00-04:00|PPI",
-      "kind": "PPI",
-      "action": "NO_TRADE",
-      "date": "2026-10-15",
-      "dt": "2026-10-15T08:30:00-04:00",
-      "titles": [
-        "Core PPI m/m",
-        "PPI m/m"
+        "Flash Manufacturing PMI",
+        "Flash Services PMI"
       ]
     }
   ]
