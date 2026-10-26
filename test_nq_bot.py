@@ -58,8 +58,21 @@ d = b.build_digest(rel, datetime(2026, 10, 7).date())
 assert "NO SE OPERA ESTA SESIÓN" in d and "FOMC Meeting Minutes" in d
 d_mon = b.build_digest(rel, datetime(2026, 10, 5).date())
 assert "ESPERAR PMI" in d_mon and "FOMC" not in d_mon
+# Festivo conocido (Columbus Day) → mensaje específico desde us_holidays.json
 d_hol = b.build_digest(rel, datetime(2026, 10, 12).date())
-assert "NO está confirmado el cierre" in d_hol
+assert "Columbus Day" in d_hol and "bonos cerrados" in d_hol
+
+# Festivo desconocido → mensaje ambiguo de fallback (sigue funcionando)
+rel_unknown = rel + [{
+    "id": "2026-08-15|HOLIDAY",
+    "kind": "HOLIDAY",
+    "action": "HOLIDAY",
+    "date": "2026-08-15",
+    "dt": None,
+    "titles": ["Assumption Day"],
+}]
+d_hol_unknown = b.build_digest(rel_unknown, datetime(2026, 8, 15).date())
+assert "NO está confirmado el cierre" in d_hol_unknown
 print("mensajes OK")
 
 # --- avisos y anti-duplicados ---
@@ -129,7 +142,7 @@ assert "Esta semana" in this_part and "5 oct – 9 oct" in this_part
 assert "lun 5 oct · 8:45 am · <b>Final Services PMI</b>" in this_part
 assert "mié 7 oct · 1:00 pm · <b>FOMC Meeting Minutes</b> → NO SE OPERA" in this_part
 assert "12 oct – 16 oct" in next_part
-assert "lun 12 oct · <b>Bank Holiday</b> → festivo USD, falta confirmar CME" in next_part
+assert "lun 12 oct · <b>Bank Holiday</b> → Columbus Day — bonos cerrados, NQ opera normal" in next_part
 assert "mié 14 oct · 7:30 am · <b>CPI m/m, Core CPI m/m</b> → NO SE OPERA" in next_part
 w2 = b.build_weekly(frel, thu, date(2026, 10, 9))                 # el feed solo llega hasta el viernes
 assert "Sin datos todavía" in w2.split("<b>Próxima semana</b>")[1]

@@ -1,0 +1,16 @@
+{
+  "closed": ["2026-12-25", "2027-01-01", "2027-03-26"],
+  "early_close": ["2026-11-26", "2027-05-31"],
+  "open_normal": ["2026-10-12", "2026-11-11", "2027-01-18", "2027-02-15"],
+  "notes": {
+    "2026-10-12": "Columbus Day — bonos cerrados, NQ opera normal",
+    "2026-11-11": "Veterans Day — bonos cerrados, NQ opera normal",
+    "2026-11-26": "Thanksgiving — CME cierra temprano (1pm ET)",
+    "2026-12-25": "Christmas — CME cerrado",
+    "2027-01-01": "New Year — CME cerrado",
+    "2027-01-18": "MLK — bonos cerrados, NQ opera normal",
+    "2027-02-15": "Presidents Day — bonos cerrados, NQ opera normal",
+    "2027-03-26": "Good Friday — CME cerrado",
+    "2027-05-31": "Memorial Day — CME cierra temprano (1pm ET)"
+  }
+}

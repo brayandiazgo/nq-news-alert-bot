@@ -36,6 +36,7 @@ STATE_DIR = ROOT / "state"
 EVENTS_FILE = STATE_DIR / "events.json"
 SENT_FILE = STATE_DIR / "sent.json"
 CME_FILE = ROOT / "cme_closures.json"
+US_HOLIDAYS_FILE = ROOT / "us_holidays.json"
 
 FF_TZ = ZoneInfo(os.getenv("FF_TZ", "America/Bogota"))
 LOCAL_TZ = ZoneInfo("America/Bogota")
@@ -52,6 +53,7 @@ RULES = [
     ("CPI", r"\bCPI\b", "NO_TRADE"),
     ("PPI", r"\bPPI\b", "NO_TRADE"),
     ("FOMC_MINUTES", r"FOMC\s+(Meeting\s+)?Minutes", "NO_TRADE"),
+    ("FED_RATE", r"Fed\s+Interest\s+Rate\s+Decision|FOMC\s+Statement", "NO_TRADE"),
     ("PMI", r"\bPMI\b", "WAIT"),
 ]
 HOLIDAY_RX = re.compile(
@@ -59,7 +61,8 @@ HOLIDAY_RX = re.compile(
     r"martin luther|presidents|juneteenth|columbus|veterans|good friday",
     re.I,
 )
-ICON = {"CPI": "🔴", "PPI": "🔴", "FOMC_MINUTES": "🔴", "PMI": "🟡", "HOLIDAY": "🏦"}
+ICON = {"CPI": "🔴", "PPI": "🔴", "FOMC_MINUTES": "🔴", "FED_RATE": "🔴",
+        "PMI": "🟡", "HOLIDAY": "🏦"}
 ACTION_TXT = {
     "NO_TRADE": "NO SE OPERA ESTA SESIÓN",
     "WAIT": "ESPERAR PMI → OPERAR DESPUÉS",
@@ -194,6 +197,19 @@ def holiday_action(d: str) -> str:
         return "🏦 NO SE OPERA: CME confirma cierre de NQ"
     if d in c.get("early_close", []):
         return "🏦 CME cierra temprano: revisa el horario antes de operar"
+
+    try:
+        us = json.loads(US_HOLIDAYS_FILE.read_text())
+    except Exception:
+        us = {}
+    if d in us.get("closed", []):
+        return "🏦 NO SE OPERA: festivo federal US (CME cerrado)"
+    if d in us.get("early_close", []):
+        return "🏦 CME cierra temprano: revisa el horario antes de operar"
+    if d in us.get("open_normal", []):
+        note = us.get("notes", {}).get(d, "festivo federal US")
+        return f"🏦 {note}"
+
     return ("⚠️ Festivo en Forex Factory, pero NO está confirmado el cierre de NQ. "
             "Revisa cmegroup.com/trading-hours antes de decidir")
 
@@ -242,8 +258,7 @@ def short_line(g: dict) -> str:
         b = datetime.fromisoformat(g["dt"]).astimezone(LOCAL_TZ)
         when = " · " + b.strftime("%I:%M %p").lstrip("0").lower()
     if g["action"] == "HOLIDAY":
-        closed = g["date"] in load_closures().get("closed", [])
-        act = "NO SE OPERA (CME cerrado)" if closed else "festivo USD, falta confirmar CME"
+        act = holiday_action(g["date"]).replace("🏦 ", "").replace("⚠️ ", "")
     else:
         act = {"NO_TRADE": "NO SE OPERA", "WAIT": "ESPERAR → OPERAR DESPUÉS"}[g["action"]]
     return f"{ICON[g['kind']]} {DIAS[d.weekday()][:3]} {d.day} {MESES[d.month - 1]}{when} · <b>{titles}</b> → {act}"
