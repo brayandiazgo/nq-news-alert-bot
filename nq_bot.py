@@ -523,11 +523,6 @@ def cmd_scrape(weekly: bool = False) -> None:
     save_json(SENT_FILE, sent)
 
 # ───────────────────────── Modo month (biquote) ─────────────────────────
-def fetch_biquote(params: dict) -> list[dict]:
-    qs = urllib.parse.urlencode(params)
-    req = urllib.request.Request(f"https://biquote.io/api/calendar?{qs}", headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read().decode("utf-8"))
 
 def build_month(rel: list[dict], start: date, end: date, label: str) -> str:
     lines = [f"🗓 <b>NQ — {label}</b> ({start.day} {MESES[start.month-1]} – {end.day} {MESES[end.month-1]})", ""]
@@ -540,49 +535,60 @@ def build_month(rel: list[dict], start: date, end: date, label: str) -> str:
     return "\n".join(lines)
 
 def cmd_month(next_month: bool = False) -> None:
+    import forexfactory
+    import pandas as pd
+    
     now = datetime.now(LOCAL_TZ)
     if next_month:
         start = (now.replace(day=1) + timedelta(days=32)).replace(day=1)
     else:
         start = now.replace(day=1)
     end = (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-
-    events = []
+    start_str = start.strftime("%Y-%m")
+    label = "Próximo mes" if next_month else "Mes actual"
     
-    # 1. Eventos regulares (CPI, PPI, PMI, etc.)
-    params = {"from": start.strftime("%Y-%m-%d"), "to": end.strftime("%Y-%m-%d"), "countries": "US", "limit": 500}
     try:
-        raw = fetch_biquote(params)
-        for it in raw:
-            try:
-                dt = datetime.fromisoformat(it["time"].replace("Z", "+00:00"))
-            except (KeyError, ValueError):
-                continue
-            impact = {"high": "red", "medium": "ora", "low": "yel"}.get(it.get("importance", "").lower(), "")
-            events.append({"date": dt.astimezone(LOCAL_TZ).date(), "dt": dt,
-                           "currency": it.get("currency", "USD"), "impact": impact,
-                           "title": clean(it.get("name", ""))})
+        # Quitamos currencies=["USD"] para que no se salte los FOMC
+        df = forexfactory.read(
+            impacts=["high", "medium", "low", "holiday"],
+            start=start_str,
+            end=start_str
+        )
     except Exception as e:
-        telegram(f"⚠️ Error al consultar eventos de biquote: {e}")
+        telegram(f"⚠️ Error al consultar Forex Factory para el mes: {e}")
         return
 
-        # 2. Festivos US
-    h_params = {"from": start.strftime("%Y-%m-%d"), "to": end.strftime("%Y-%m-%d"), "type": "holiday", "limit": 100}
-    try:
-        raw_hol = fetch_biquote(h_params)
-        for it in raw_hol:
-            if it.get("countryCode") == "US":
-                # Tomamos la fecha directamente del string UTC para evitar que el cambio de zona horaria lo mande al día anterior
-                dt_str = it["time"][:10] 
-                d_obj = date.fromisoformat(dt_str)
-                events.append({"date": d_obj, "dt": None,
-                               "currency": "USD", "impact": "gra",
-                               "title": clean(it.get("name", ""))})
-    except Exception as e:
-        print(f"(opcional) error festivos: {e}")
+    events = []
+    for _, row in df.iterrows():
+        # 1. Filtramos por país en lugar de por moneda
+        if row.get('country') != 'US':
+            continue
+            
+        dt_utc = row['datetime_utc']
+        if pd.isna(dt_utc):
+            continue
+            
+        try:
+            dt = dt_utc.to_pydatetime()
+        except AttributeError:
+            dt = datetime.fromisoformat(str(dt_utc))
+            
+        impact = {"high": "red", "medium": "ora", "low": "yel", "holiday": "gra"}.get(row['impact'], "")
+        
+        # 2. Limpiamos el prefijo "US " del título
+        title = clean(row['title'])
+        if title.startswith("US "):
+            title = title[3:]
+            
+        events.append({
+            "date": dt.astimezone(LOCAL_TZ).date(),
+            "dt": None if impact == "gra" else dt,
+            "currency": "USD", # Forzamos USD para que classify() lo acepte
+            "impact": impact,
+            "title": title
+        })
 
     rel = relevant(events)
-    label = "Próximo mes" if next_month else "Mes actual"
     telegram(build_month(rel, start, end, label))
     print(f"Mes {label} enviado: {len(rel)} eventos relevantes.")
 

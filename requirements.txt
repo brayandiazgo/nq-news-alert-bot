@@ -1,3 +1,5 @@
 playwright
 beautifulsoup4
 tzdata
+forexfactory
+pandas
