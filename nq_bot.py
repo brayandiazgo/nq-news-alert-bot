@@ -534,7 +534,7 @@ def build_month(rel: list[dict], start: date, end: date, label: str) -> str:
         lines.extend(short_line(g) for g in evs)
     return "\n".join(lines)
 
-def cmd_month(next_month: bool = False) -> None:
+def get_month_text(next_month: bool = False) -> str:
     import forexfactory
     import pandas as pd
     
@@ -548,7 +548,6 @@ def cmd_month(next_month: bool = False) -> None:
     label = "Próximo mes" if next_month else "Mes actual"
     
     try:
-        # Quitamos currencies=["USD"] para que no se salte los FOMC
         df = forexfactory.read(
             impacts=["high", "medium", "low", "holiday"],
             start=start_str,
@@ -556,42 +555,112 @@ def cmd_month(next_month: bool = False) -> None:
             include_no_data=True
         )
     except Exception as e:
-        telegram(f"⚠️ Error al consultar Forex Factory para el mes: {e}")
-        return
+        return f"⚠️ Error al consultar Forex Factory para el mes: {e}"
 
     events = []
     for _, row in df.iterrows():
-        # 1. Filtramos por país en lugar de por moneda
         if row.get('country') != 'US':
             continue
-            
         dt_utc = row['datetime_utc']
         if pd.isna(dt_utc):
             continue
-            
         try:
             dt = dt_utc.to_pydatetime()
         except AttributeError:
             dt = datetime.fromisoformat(str(dt_utc))
-            
         impact = {"high": "red", "medium": "ora", "low": "yel", "holiday": "gra"}.get(row['impact'], "")
-        
-        # 2. Limpiamos el prefijo "US " del título
         title = clean(row['title'])
         if title.startswith("US "):
             title = title[3:]
-            
         events.append({
             "date": dt.astimezone(LOCAL_TZ).date(),
             "dt": None if impact == "gra" else dt,
-            "currency": "USD", # Forzamos USD para que classify() lo acepte
+            "currency": "USD",
             "impact": impact,
             "title": title
         })
 
     rel = relevant(events)
-    telegram(build_month(rel, start, end, label))
-    print(f"Mes {label} enviado: {len(rel)} eventos relevantes.")
+    return build_month(rel, start, end, label)
+
+def cmd_month(next_month: bool = False) -> None:
+    telegram(get_month_text(next_month))
+    print("Mes enviado.")
+
+def cmd_poll() -> None:
+    """Revisa si hay mensajes nuevos en Telegram y responde."""
+    token = os.getenv("TELEGRAM_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        print("Faltan credenciales de Telegram.")
+        return
+
+    offset_file = STATE_DIR / "tg_offset.json"
+    offset = load_json(offset_file, {}).get("offset", 0)
+
+    # Consultar mensajes nuevos a Telegram
+    url = f"https://api.telegram.org/bot{token}/getUpdates?offset={offset}&timeout=5"
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except Exception as e:
+        print(f"Error en getUpdates: {e}")
+        return
+
+    if not data.get("ok") or not data.get("result"):
+        print("Sin mensajes nuevos.")
+        return
+
+    for update in data["result"]:
+        offset = max(offset, update["update_id"] + 1)
+        message = update.get("message", {})
+        text = message.get("text", "").strip().lower()
+        chat = str(message.get("chat", {}).get("id", ""))
+
+        if chat != str(chat_id):
+            continue  # Ignorar si no eres tú
+
+        # Comandos
+        if text == "/hoy":
+            data_ev = load_json(EVENTS_FILE, {})
+            if data_ev:
+                rel = data_ev.get("events", [])
+                telegram(build_digest(rel, datetime.now(LOCAL_TZ).date()))
+            else:
+                telegram("No hay datos de hoy. Corre el scrape primero.")
+                
+        elif text == "/semana":
+            data_ev = load_json(EVENTS_FILE, {})
+            if data_ev:
+                rel = data_ev.get("events", [])
+                du = date.fromisoformat(data_ev["data_until"]) if data_ev.get("data_until") else None
+                telegram(build_weekly(rel, datetime.now(LOCAL_TZ).date(), du))
+            else:
+                telegram("No hay datos semanales.")
+                
+        elif text == "/mes":
+            telegram("⏳ Consultando el mes a Forex Factory, dame un segundo...")
+            telegram(get_month_text(next_month=False))
+            
+        elif text == "/mes next":
+            telegram("⏳ Consultando el próximo mes...")
+            telegram(get_month_text(next_month=True))
+            
+        elif text == "/estado":
+            data_ev = load_json(EVENTS_FILE, {})
+            if data_ev:
+                gen = data_ev.get("generated_at", "desconocido")
+                src = data_ev.get("source", "desconocida")
+                telegram(f"📊 <b>Estado del bot</b>\nÚltima actualización: {gen}\nFuente: {src}")
+            else:
+                telegram("Aún no hay estado guardado.")
+        else:
+            telegram("Comandos disponibles:\n/hoy\n/semana\n/mes\n/mes next\n/estado")
+
+    # Guardar el offset para no volver a leer los mismos mensajes
+    save_json(offset_file, {"offset": offset})
+    print(f"Polling completado. Nuevo offset: {offset}")
 
 def cmd_parse_file(path: str, ym: str) -> None:
     y, m = (int(x) for x in ym.split("-"))
@@ -615,3 +684,5 @@ if __name__ == "__main__":
     else:
         print(__doc__)
         sys.exit(2)
+    elif cmd == "poll":
+        cmd_poll()
