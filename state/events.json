@@ -1,10 +1,20 @@
 {
-  "generated_at": "2026-10-26T06:02:48.631429-05:00",
+  "generated_at": "2026-10-26T11:26:42.689592-05:00",
   "source": "feed",
   "data_until": "2026-10-30",
-  "rows_total": 96,
+  "rows_total": 97,
   "rows_usd": 26,
   "events": [
+    {
+      "id": "2026-10-28T14:00:00-04:00|FED_RATE",
+      "kind": "FED_RATE",
+      "action": "NO_TRADE",
+      "date": "2026-10-28",
+      "dt": "2026-10-28T14:00:00-04:00",
+      "titles": [
+        "FOMC Statement"
+      ]
+    },
     {
       "id": "2026-10-30T09:45:00-04:00|PMI",
       "kind": "PMI",
