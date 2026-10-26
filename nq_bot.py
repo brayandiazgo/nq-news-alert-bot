@@ -530,12 +530,13 @@ def fetch_biquote(params: dict) -> list[dict]:
         return json.loads(r.read().decode("utf-8"))
 
 def build_month(rel: list[dict], start: date, end: date, label: str) -> str:
-    lines = [f"🗓 <b>NQ — {label}</b> ({start.day} {MESES[start.month-1]} – {end.day} {MESES[end.month-1]})"]
+    lines = [f"🗓 <b>NQ — {label}</b> ({start.day} {MESES[start.month-1]} – {end.day} {MESES[end.month-1]})", ""]
     evs = [g for g in rel if start.isoformat() <= g["date"] <= end.isoformat()]
     if not evs:
         lines.append("✅ Sin noticias que afecten NQ este mes.")
     else:
-        lines.extend(event_block(g) for g in evs)
+        # Usamos short_line en vez de event_block para que cada noticia traiga su día
+        lines.extend(short_line(g) for g in evs)
     return "\n".join(lines)
 
 def cmd_month(next_month: bool = False) -> None:
