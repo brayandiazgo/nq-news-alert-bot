@@ -522,6 +522,66 @@ def cmd_scrape(weekly: bool = False) -> None:
             print("Resumen de hoy ya enviado antes: no lo repito (así se evitan duplicados).")
     save_json(SENT_FILE, sent)
 
+# ───────────────────────── Modo month (biquote) ─────────────────────────
+def fetch_biquote(params: dict) -> list[dict]:
+    qs = urllib.parse.urlencode(params)
+    req = urllib.request.Request(f"https://biquote.io/api/calendar?{qs}", headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+def build_month(rel: list[dict], start: date, end: date, label: str) -> str:
+    lines = [f"🗓 <b>NQ — {label}</b> ({start.day} {MESES[start.month-1]} – {end.day} {MESES[end.month-1]})"]
+    evs = [g for g in rel if start.isoformat() <= g["date"] <= end.isoformat()]
+    if not evs:
+        lines.append("✅ Sin noticias que afecten NQ este mes.")
+    else:
+        lines.extend(event_block(g) for g in evs)
+    return "\n".join(lines)
+
+def cmd_month(next_month: bool = False) -> None:
+    now = datetime.now(LOCAL_TZ)
+    if next_month:
+        start = (now.replace(day=1) + timedelta(days=32)).replace(day=1)
+    else:
+        start = now.replace(day=1)
+    end = (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+    events = []
+    
+    # 1. Eventos regulares (CPI, PPI, PMI, etc.)
+    params = {"from": start.strftime("%Y-%m-%d"), "to": end.strftime("%Y-%m-%d"), "countries": "US", "limit": 500}
+    try:
+        raw = fetch_biquote(params)
+        for it in raw:
+            try:
+                dt = datetime.fromisoformat(it["time"].replace("Z", "+00:00"))
+            except (KeyError, ValueError):
+                continue
+            impact = {"high": "red", "medium": "ora", "low": "yel"}.get(it.get("importance", "").lower(), "")
+            events.append({"date": dt.astimezone(LOCAL_TZ).date(), "dt": dt,
+                           "currency": it.get("currency", "USD"), "impact": impact,
+                           "title": clean(it.get("name", ""))})
+    except Exception as e:
+        telegram(f"⚠️ Error al consultar eventos de biquote: {e}")
+        return
+
+    # 2. Festivos US
+    h_params = {"from": start.strftime("%Y-%m-%d"), "to": end.strftime("%Y-%m-%d"), "type": "holiday", "limit": 100}
+    try:
+        raw_hol = fetch_biquote(h_params)
+        for it in raw_hol:
+            if it.get("countryCode") == "US":
+                dt = datetime.fromisoformat(it["time"].replace("Z", "+00:00"))
+                events.append({"date": dt.astimezone(LOCAL_TZ).date(), "dt": None,
+                               "currency": "USD", "impact": "gra",
+                               "title": clean(it.get("name", ""))})
+    except Exception as e:
+        print(f"(opcional) error festivos: {e}")
+
+    rel = relevant(events)
+    label = "Próximo mes" if next_month else "Mes actual"
+    telegram(build_month(rel, start, end, label))
+    print(f"Mes {label} enviado: {len(rel)} eventos relevantes.")
 
 def cmd_parse_file(path: str, ym: str) -> None:
     y, m = (int(x) for x in ym.split("-"))
@@ -536,6 +596,8 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     if cmd == "scrape":
         cmd_scrape(weekly="--weekly" in sys.argv[2:])
+    elif cmd == "month":
+        cmd_month(next_month="--next" in sys.argv[2:])
     elif cmd == "check":
         cmd_check()
     elif cmd == "parse-file" and len(sys.argv) == 4:
