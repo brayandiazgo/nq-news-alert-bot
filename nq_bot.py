@@ -552,7 +552,8 @@ def cmd_month(next_month: bool = False) -> None:
         df = forexfactory.read(
             impacts=["high", "medium", "low", "holiday"],
             start=start_str,
-            end=start_str
+            end=start_str,
+            include_no_data=True
         )
     except Exception as e:
         telegram(f"⚠️ Error al consultar Forex Factory para el mes: {e}")
