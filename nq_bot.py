@@ -606,10 +606,12 @@ def cmd_poll() -> None:
             data = json.loads(r.read().decode("utf-8"))
     except Exception as e:
         print(f"Error en getUpdates: {e}")
+        save_json(offset_file, {"offset": offset})  # Guardar para que GitHub no falle
         return
 
     if not data.get("ok") or not data.get("result"):
         print("Sin mensajes nuevos.")
+        save_json(offset_file, {"offset": offset})
         return
 
     for update in data["result"]:
@@ -621,44 +623,50 @@ def cmd_poll() -> None:
         if chat != str(chat_id):
             continue  # Ignorar si no eres tú
 
-        # Comandos
-        if text == "/hoy":
-            data_ev = load_json(EVENTS_FILE, {})
-            if data_ev:
-                rel = data_ev.get("events", [])
-                telegram(build_digest(rel, datetime.now(LOCAL_TZ).date()))
-            else:
-                telegram("No hay datos de hoy. Corre el scrape primero.")
+        try:
+            if text == "/hoy":
+                data_ev = load_json(EVENTS_FILE, {})
+                if data_ev:
+                    rel = data_ev.get("events", [])
+                    telegram(build_digest(rel, datetime.now(LOCAL_TZ).date()))
+                else:
+                    telegram("No hay datos de hoy. Corre el scrape primero.")
+                    
+            elif text == "/semana":
+                data_ev = load_json(EVENTS_FILE, {})
+                if data_ev:
+                    rel = data_ev.get("events", [])
+                    du = date.fromisoformat(data_ev["data_until"]) if data_ev.get("data_until") else None
+                    telegram(build_weekly(rel, datetime.now(LOCAL_TZ).date(), du))
+                else:
+                    telegram("No hay datos semanales.")
+                    
+            elif text == "/mes":
+                telegram("⏳ Consultando el mes a Forex Factory, dame un segundo...")
+                telegram(get_month_text(next_month=False))
                 
-        elif text == "/semana":
-            data_ev = load_json(EVENTS_FILE, {})
-            if data_ev:
-                rel = data_ev.get("events", [])
-                du = date.fromisoformat(data_ev["data_until"]) if data_ev.get("data_until") else None
-                telegram(build_weekly(rel, datetime.now(LOCAL_TZ).date(), du))
-            else:
-                telegram("No hay datos semanales.")
+            elif text == "/mes next":
+                telegram("⏳ Consultando el próximo mes...")
+                telegram(get_month_text(next_month=True))
                 
-        elif text == "/mes":
-            telegram("⏳ Consultando el mes a Forex Factory, dame un segundo...")
-            telegram(get_month_text(next_month=False))
-            
-        elif text == "/mes next":
-            telegram("⏳ Consultando el próximo mes...")
-            telegram(get_month_text(next_month=True))
-            
-        elif text == "/estado":
-            data_ev = load_json(EVENTS_FILE, {})
-            if data_ev:
-                gen = data_ev.get("generated_at", "desconocido")
-                src = data_ev.get("source", "desconocida")
-                telegram(f"📊 <b>Estado del bot</b>\nÚltima actualización: {gen}\nFuente: {src}")
+            elif text == "/estado":
+                data_ev = load_json(EVENTS_FILE, {})
+                if data_ev:
+                    gen = data_ev.get("generated_at", "desconocido")
+                    src = data_ev.get("source", "desconocida")
+                    telegram(f"📊 <b>Estado del bot</b>\nÚltima actualización: {gen}\nFuente: {src}")
+                else:
+                    telegram("Aún no hay estado guardado.")
             else:
-                telegram("Aún no hay estado guardado.")
-        else:
-            telegram("Comandos disponibles:\n/hoy\n/semana\n/mes\n/mes next\n/estado")
+                telegram("Comandos disponibles:\n/hoy\n/semana\n/mes\n/mes next\n/estado")
+        except BaseException as e:
+            # Si Telegram falla (por ejemplo, por un texto mal formateado), avisamos
+            try:
+                telegram(f"⚠️ Error procesando el comando: {e}")
+            except BaseException:
+                print(f"Error fatal silencioso: {e}")
 
-    # Guardar el offset para no volver a leer los mismos mensajes
+    # Guardar el offset final
     save_json(offset_file, {"offset": offset})
     print(f"Polling completado. Nuevo offset: {offset}")
 
