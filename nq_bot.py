@@ -565,14 +565,16 @@ def cmd_month(next_month: bool = False) -> None:
         telegram(f"⚠️ Error al consultar eventos de biquote: {e}")
         return
 
-    # 2. Festivos US
+        # 2. Festivos US
     h_params = {"from": start.strftime("%Y-%m-%d"), "to": end.strftime("%Y-%m-%d"), "type": "holiday", "limit": 100}
     try:
         raw_hol = fetch_biquote(h_params)
         for it in raw_hol:
             if it.get("countryCode") == "US":
-                dt = datetime.fromisoformat(it["time"].replace("Z", "+00:00"))
-                events.append({"date": dt.astimezone(LOCAL_TZ).date(), "dt": None,
+                # Tomamos la fecha directamente del string UTC para evitar que el cambio de zona horaria lo mande al día anterior
+                dt_str = it["time"][:10] 
+                d_obj = date.fromisoformat(dt_str)
+                events.append({"date": d_obj, "dt": None,
                                "currency": "USD", "impact": "gra",
                                "title": clean(it.get("name", ""))})
     except Exception as e:
