@@ -537,6 +537,7 @@ def build_month(rel: list[dict], start: date, end: date, label: str) -> str:
 def get_month_text(next_month: bool = False) -> str:
     import forexfactory
     import pandas as pd
+    import urllib.request, urllib.parse
     
     now = datetime.now(LOCAL_TZ)
     if next_month:
@@ -547,6 +548,9 @@ def get_month_text(next_month: bool = False) -> str:
     start_str = start.strftime("%Y-%m")
     label = "Próximo mes" if next_month else "Mes actual"
     
+    events = []
+    
+    # --- INTENTO 1: forexfactory (Rápido y completo, pero Cloudflare puede bloquear en GitHub) ---
     try:
         df = forexfactory.read(
             impacts=["high", "medium", "low", "holiday"],
@@ -554,31 +558,48 @@ def get_month_text(next_month: bool = False) -> str:
             end=start_str,
             include_no_data=True
         )
+        for _, row in df.iterrows():
+            if row.get('country') != 'US': continue
+            dt_utc = row['datetime_utc']
+            if pd.isna(dt_utc): continue
+            try: dt = dt_utc.to_pydatetime()
+            except AttributeError: dt = datetime.fromisoformat(str(dt_utc))
+            impact = {"high": "red", "medium": "ora", "low": "yel", "holiday": "gra"}.get(row['impact'], "")
+            title = clean(row['title'])
+            if title.startswith("US "): title = title[3:]
+            events.append({"date": dt.astimezone(LOCAL_TZ).date(), "dt": None if impact == "gra" else dt,
+                           "currency": "USD", "impact": impact, "title": title})
     except Exception as e:
-        return f"⚠️ Error al consultar Forex Factory para el mes: {e}"
+        print(f"forexfactory falló: {e}")
 
-    events = []
-    for _, row in df.iterrows():
-        if row.get('country') != 'US':
-            continue
-        dt_utc = row['datetime_utc']
-        if pd.isna(dt_utc):
-            continue
+    # --- INTENTO 2: biquote (Respaldo si forexfactory está vacío por Cloudflare en GitHub) ---
+    if not events:
+        print("forexfactory devolvió vacío (posible bloqueo de Cloudflare). Usando biquote como respaldo...")
+        # Eventos
+        params = {"from": start.strftime("%Y-%m-%d"), "to": end.strftime("%Y-%m-%d"), "countries": "US", "limit": 500}
         try:
-            dt = dt_utc.to_pydatetime()
-        except AttributeError:
-            dt = datetime.fromisoformat(str(dt_utc))
-        impact = {"high": "red", "medium": "ora", "low": "yel", "holiday": "gra"}.get(row['impact'], "")
-        title = clean(row['title'])
-        if title.startswith("US "):
-            title = title[3:]
-        events.append({
-            "date": dt.astimezone(LOCAL_TZ).date(),
-            "dt": None if impact == "gra" else dt,
-            "currency": "USD",
-            "impact": impact,
-            "title": title
-        })
+            req = urllib.request.Request(f"https://biquote.io/api/calendar?{urllib.parse.urlencode(params)}", headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                raw = json.loads(r.read().decode("utf-8"))
+            for it in raw:
+                dt = datetime.fromisoformat(it["time"].replace("Z", "+00:00"))
+                impact = {"high": "red", "medium": "ora", "low": "yel"}.get(it.get("importance", "").lower(), "")
+                events.append({"date": dt.astimezone(LOCAL_TZ).date(), "dt": dt, "currency": "USD", "impact": impact, "title": clean(it.get("name", ""))})
+        except Exception as e:
+            print(f"biquote (eventos) falló: {e}")
+            
+        # Festivos
+        h_params = {"from": start.strftime("%Y-%m-%d"), "to": end.strftime("%Y-%m-%d"), "type": "holiday", "limit": 100}
+        try:
+            req_h = urllib.request.Request(f"https://biquote.io/api/calendar?{urllib.parse.urlencode(h_params)}", headers={"User-Agent": UA})
+            with urllib.request.urlopen(req_h, timeout=30) as rh:
+                raw_h = json.loads(rh.read().decode("utf-8"))
+            for it in raw_h:
+                if it.get("countryCode") == "US":
+                    d_obj = date.fromisoformat(it["time"][:10])
+                    events.append({"date": d_obj, "dt": None, "currency": "USD", "impact": "gra", "title": clean(it.get("name", ""))})
+        except Exception as e:
+            print(f"biquote (festivos) falló: {e}")
 
     rel = relevant(events)
     return build_month(rel, start, end, label)
