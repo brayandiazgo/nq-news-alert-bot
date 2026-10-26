@@ -687,10 +687,10 @@ if __name__ == "__main__":
         cmd_month(next_month="--next" in sys.argv[2:])
     elif cmd == "check":
         cmd_check()
+    elif cmd == "poll":
+        cmd_poll()
     elif cmd == "parse-file" and len(sys.argv) == 4:
         cmd_parse_file(sys.argv[2], sys.argv[3])
     else:
         print(__doc__)
         sys.exit(2)
-    elif cmd == "poll":
-        cmd_poll()
