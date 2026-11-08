@@ -1,48 +1,40 @@
 {
-  "generated_at": "2026-11-06T06:19:06.677348-05:00",
+  "generated_at": "2026-11-08T18:28:31.259113-05:00",
   "source": "feed",
-  "data_until": "2026-11-06",
-  "rows_total": 115,
-  "rows_usd": 33,
+  "data_until": "2026-11-14",
+  "rows_total": 101,
+  "rows_usd": 37,
   "events": [
     {
-      "id": "2026-11-02T09:45:00-05:00|PMI",
-      "kind": "PMI",
-      "action": "WAIT",
-      "date": "2026-11-02",
-      "dt": "2026-11-02T09:45:00-05:00",
+      "id": "2026-11-10T08:30:00-05:00|CPI",
+      "kind": "CPI",
+      "action": "NO_TRADE",
+      "date": "2026-11-10",
+      "dt": "2026-11-10T08:30:00-05:00",
       "titles": [
-        "Final Manufacturing PMI"
+        "Core CPI m/m",
+        "CPI m/m"
       ]
     },
     {
-      "id": "2026-11-02T10:00:00-05:00|PMI",
-      "kind": "PMI",
-      "action": "WAIT",
-      "date": "2026-11-02",
-      "dt": "2026-11-02T10:00:00-05:00",
+      "id": "2026-11-11|HOLIDAY",
+      "kind": "HOLIDAY",
+      "action": "HOLIDAY",
+      "date": "2026-11-11",
+      "dt": null,
       "titles": [
-        "ISM Manufacturing PMI"
+        "Bank Holiday"
       ]
     },
     {
-      "id": "2026-11-04T09:45:00-05:00|PMI",
-      "kind": "PMI",
-      "action": "WAIT",
-      "date": "2026-11-04",
-      "dt": "2026-11-04T09:45:00-05:00",
+      "id": "2026-11-13T08:30:00-05:00|PPI",
+      "kind": "PPI",
+      "action": "NO_TRADE",
+      "date": "2026-11-13",
+      "dt": "2026-11-13T08:30:00-05:00",
       "titles": [
-        "Final Services PMI"
-      ]
-    },
-    {
-      "id": "2026-11-04T10:00:00-05:00|PMI",
-      "kind": "PMI",
-      "action": "WAIT",
-      "date": "2026-11-04",
-      "dt": "2026-11-04T10:00:00-05:00",
-      "titles": [
-        "ISM Services PMI"
+        "Core PPI m/m",
+        "PPI m/m"
       ]
     }
   ]
