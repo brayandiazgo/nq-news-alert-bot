@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-12T13:27:57.358862-05:00",
+  "generated_at": "2026-11-13T12:55:08.503763-05:00",
   "source": "feed",
   "data_until": "2026-11-14",
-  "rows_total": 106,
-  "rows_usd": 38,
+  "rows_total": 105,
+  "rows_usd": 37,
   "events": [
     {
       "id": "2026-11-10T08:30:00-05:00|CPI",
