@@ -1,40 +1,18 @@
 {
-  "generated_at": "2026-11-13T12:55:08.503763-05:00",
+  "generated_at": "2026-11-15T21:35:09.048776-05:00",
   "source": "feed",
-  "data_until": "2026-11-14",
-  "rows_total": 105,
-  "rows_usd": 37,
+  "data_until": "2026-11-20",
+  "rows_total": 120,
+  "rows_usd": 42,
   "events": [
     {
-      "id": "2026-11-10T08:30:00-05:00|CPI",
-      "kind": "CPI",
+      "id": "2026-11-18T14:00:00-05:00|FOMC_MINUTES",
+      "kind": "FOMC_MINUTES",
       "action": "NO_TRADE",
-      "date": "2026-11-10",
-      "dt": "2026-11-10T08:30:00-05:00",
+      "date": "2026-11-18",
+      "dt": "2026-11-18T14:00:00-05:00",
       "titles": [
-        "Core CPI m/m",
-        "CPI m/m"
-      ]
-    },
-    {
-      "id": "2026-11-11|HOLIDAY",
-      "kind": "HOLIDAY",
-      "action": "HOLIDAY",
-      "date": "2026-11-11",
-      "dt": null,
-      "titles": [
-        "Bank Holiday"
-      ]
-    },
-    {
-      "id": "2026-11-13T08:30:00-05:00|PPI",
-      "kind": "PPI",
-      "action": "NO_TRADE",
-      "date": "2026-11-13",
-      "dt": "2026-11-13T08:30:00-05:00",
-      "titles": [
-        "Core PPI m/m",
-        "PPI m/m"
+        "FOMC Meeting Minutes"
       ]
     }
   ]
