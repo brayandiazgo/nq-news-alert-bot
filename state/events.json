@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-16T15:35:05.833202-05:00",
+  "generated_at": "2026-11-17T14:15:10.083244-05:00",
   "source": "feed",
   "data_until": "2026-11-20",
-  "rows_total": 120,
-  "rows_usd": 42,
+  "rows_total": 125,
+  "rows_usd": 46,
   "events": [
     {
       "id": "2026-11-18T14:00:00-05:00|FOMC_MINUTES",
