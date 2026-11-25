@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-24T15:43:34.900023-05:00",
+  "generated_at": "2026-11-25T14:59:45.247996-05:00",
   "source": "feed",
   "data_until": "2026-11-27",
-  "rows_total": 74,
-  "rows_usd": 24,
+  "rows_total": 76,
+  "rows_usd": 25,
   "events": [
     {
       "id": "2026-11-23T09:45:00-05:00|PMI",
